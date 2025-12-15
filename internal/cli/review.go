@@ -3,14 +3,40 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/buker/revi/internal/claude"
 	"github.com/buker/revi/internal/config"
+	"github.com/buker/revi/internal/fix"
 	"github.com/buker/revi/internal/git"
 	"github.com/buker/revi/internal/review"
 	"github.com/spf13/cobra"
 )
+
+func init() {
+	// Fix flag
+	reviewCmd.Flags().BoolP("fix", "f", false, "Interactively fix detected issues")
+
+	// Block flags
+	reviewCmd.Flags().BoolP("block", "b", true, "Exit with error if high-severity issues found")
+	reviewCmd.Flags().BoolP("no-block", "B", false, "Don't exit with error on issues")
+
+	// Review mode flags
+	reviewCmd.Flags().Bool("security", false, "Enable security review")
+	reviewCmd.Flags().Bool("no-security", false, "Disable security review")
+	reviewCmd.Flags().Bool("performance", false, "Enable performance review")
+	reviewCmd.Flags().Bool("no-performance", false, "Disable performance review")
+	reviewCmd.Flags().Bool("style", false, "Enable style review")
+	reviewCmd.Flags().Bool("no-style", false, "Disable style review")
+	reviewCmd.Flags().Bool("errors", false, "Enable error handling review")
+	reviewCmd.Flags().Bool("no-errors", false, "Disable error handling review")
+	reviewCmd.Flags().Bool("testing", false, "Enable testing review")
+	reviewCmd.Flags().Bool("no-testing", false, "Disable testing review")
+	reviewCmd.Flags().Bool("docs", false, "Enable documentation review")
+	reviewCmd.Flags().Bool("no-docs", false, "Disable documentation review")
+	reviewCmd.Flags().BoolP("all", "a", false, "Run all review modes")
+}
 
 var reviewCmd = &cobra.Command{
 	Use:   "review",
@@ -18,7 +44,9 @@ var reviewCmd = &cobra.Command{
 	Long: `Run AI-powered code review on staged changes without creating a commit.
 
 This command analyzes your staged git changes using specialized review agents
-(security, performance, style, error handling, testing, documentation).`,
+(security, performance, style, error handling, testing, documentation).
+
+Use --fix to interactively apply suggested fixes after the review.`,
 	RunE: runReview,
 }
 
@@ -121,13 +149,93 @@ func runReview(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Failed reviews:   %d\n", summary.FailedReviews)
 	}
 
+	// Run interactive fix phase if requested
+	fixEnabled, _ := cmd.Flags().GetBool("fix")
+	if fixEnabled && summary.IssuesFound > 0 {
+		// Collect all issues from results
+		var allIssues []review.Issue
+		for _, r := range results {
+			if r != nil && len(r.Issues) > 0 {
+				allIssues = append(allIssues, r.Issues...)
+			}
+		}
+
+		if len(allIssues) > 0 {
+			// Get repository root for the applier
+			repoRoot, err := repo.Root()
+			if err != nil {
+				return fmt.Errorf("failed to get repository root: %w", err)
+			}
+
+			applier := fix.NewApplier(repoRoot)
+			fixer := fix.NewInteractiveFixer(os.Stdin, os.Stdout, applier.Apply)
+			fixer.Run(allIssues)
+		}
+	}
+
 	// Check if should block
-	blockOnIssues := config.IsBlockEnabled(cmd)
+	blockOnIssues := isBlockEnabled(cmd)
 	if review.ShouldBlock(results, blockOnIssues) {
 		return fmt.Errorf("high-severity issues found")
 	}
 
 	return nil
+}
+
+func filterModesByFlags(cmd *cobra.Command, detected []review.Mode) []review.Mode {
+	enabled := make(map[review.Mode]bool)
+	disabled := make(map[review.Mode]bool)
+
+	// Check enabled flags
+	if sec, _ := cmd.Flags().GetBool("security"); sec {
+		enabled[review.ModeSecurity] = true
+	}
+	if perf, _ := cmd.Flags().GetBool("performance"); perf {
+		enabled[review.ModePerformance] = true
+	}
+	if style, _ := cmd.Flags().GetBool("style"); style {
+		enabled[review.ModeStyle] = true
+	}
+	if errs, _ := cmd.Flags().GetBool("errors"); errs {
+		enabled[review.ModeErrors] = true
+	}
+	if test, _ := cmd.Flags().GetBool("testing"); test {
+		enabled[review.ModeTesting] = true
+	}
+	if docs, _ := cmd.Flags().GetBool("docs"); docs {
+		enabled[review.ModeDocs] = true
+	}
+
+	// Check disabled flags
+	if noSec, _ := cmd.Flags().GetBool("no-security"); noSec {
+		disabled[review.ModeSecurity] = true
+	}
+	if noPerf, _ := cmd.Flags().GetBool("no-performance"); noPerf {
+		disabled[review.ModePerformance] = true
+	}
+	if noStyle, _ := cmd.Flags().GetBool("no-style"); noStyle {
+		disabled[review.ModeStyle] = true
+	}
+	if noErrs, _ := cmd.Flags().GetBool("no-errors"); noErrs {
+		disabled[review.ModeErrors] = true
+	}
+	if noTest, _ := cmd.Flags().GetBool("no-testing"); noTest {
+		disabled[review.ModeTesting] = true
+	}
+	if noDocs, _ := cmd.Flags().GetBool("no-docs"); noDocs {
+		disabled[review.ModeDocs] = true
+	}
+
+	return review.FilterModes(detected, enabled, disabled)
+}
+
+func isBlockEnabled(cmd *cobra.Command) bool {
+	noBlock, _ := cmd.Flags().GetBool("no-block")
+	if noBlock {
+		return false
+	}
+	block, _ := cmd.Flags().GetBool("block")
+	return block
 }
 
 func printReviewResult(r *review.Result) {

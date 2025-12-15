@@ -22,9 +22,10 @@ func NewGenerator(client *claude.Client) *Generator {
 }
 
 // Generate creates a conventional commit message by analyzing the given git diff.
+// If userContext is provided, it will be included to explain why the change was made.
 // Returns a structured CommitMessage with type, optional scope, subject, and body.
-func (g *Generator) Generate(ctx context.Context, diff string) (*claude.CommitMessage, error) {
-	return g.client.GenerateCommitMessage(ctx, diff)
+func (g *Generator) Generate(ctx context.Context, diff string, userContext string) (*claude.CommitMessage, error) {
+	return g.client.GenerateCommitMessage(ctx, diff, userContext)
 }
 
 // FormatMessage formats a CommitMessage as a string suitable for git commit.

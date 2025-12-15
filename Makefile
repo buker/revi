@@ -54,6 +54,13 @@ test:
 	@echo "Running tests..."
 	$(GO) test -v ./...
 
+# Upgrade Go dependencies
+deps-upgrade:
+	@echo "Upgrading Go dependencies..."
+	@go get -u ./...
+	@go mod tidy
+	@echo "✅ Go dependencies upgraded"
+
 # Run linter
 lint:
 	@echo "Running linter..."
@@ -80,6 +87,7 @@ help:
 	@echo "  make lint         Run linter"
 	@echo "  make dev          Build development version"
 	@echo "  make help         Show this help"
+	@echo "  make deps-upgrade Upgrade Go dependencies"
 	@echo ""
 	@echo "Variables:"
 	@echo "  PREFIX            Installation prefix (default: /usr/local)"

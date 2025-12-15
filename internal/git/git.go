@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	godiffpatch "github.com/sourcegraph/go-diff-patch"
 )
 
 // Sentinel errors for common git operations.
@@ -109,7 +110,7 @@ func (r *Repository) GetStagedDiff() (string, error) {
 		diffBuilder.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", entry.Name, entry.Name))
 
 		switch fileStatus.Staging {
-			case git.Added:
+		case git.Added:
 			diffBuilder.WriteString("new file mode 100644\n")
 			content, err := r.getIndexFileContent(entry.Hash)
 			if err != nil {
@@ -138,9 +139,9 @@ func (r *Repository) GetStagedDiff() (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("failed to get new content for modified file %s: %w", entry.Name, err)
 			}
-			diffBuilder.WriteString(fmt.Sprintf("--- a/%s\n", entry.Name))
-			diffBuilder.WriteString(fmt.Sprintf("+++ b/%s\n", entry.Name))
-			diffBuilder.WriteString(simpleDiff(oldContent, newContent))
+			// Use go-diff-patch library for proper unified diff generation
+			patch := godiffpatch.GeneratePatch(entry.Name, oldContent, newContent)
+			diffBuilder.WriteString(patch)
 		}
 		diffBuilder.WriteString("\n")
 	}
@@ -212,65 +213,6 @@ func (r *Repository) getTreeFileContent(tree *object.Tree, path string) (string,
 	return file.Contents()
 }
 
-// simpleDiff creates a simple unified diff between two strings
-func simpleDiff(old, new string) string {
-	// Handle empty string edge cases
-	if old == "" && new == "" {
-		return ""
-	}
-
-	// Split into lines, handling empty content correctly
-	var oldLines, newLines []string
-	if old == "" {
-		oldLines = []string{}
-	} else {
-		oldLines = strings.Split(old, "\n")
-	}
-	if new == "" {
-		newLines = []string{}
-	} else {
-		newLines = strings.Split(new, "\n")
-	}
-
-	var result strings.Builder
-
-	// Simple line-by-line comparison (not a real diff algorithm)
-	maxLen := len(oldLines)
-	if len(newLines) > maxLen {
-		maxLen = len(newLines)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		hasOld := i < len(oldLines)
-		hasNew := i < len(newLines)
-
-		var oldLine, newLine string
-		if hasOld {
-			oldLine = oldLines[i]
-		}
-		if hasNew {
-			newLine = newLines[i]
-		}
-
-		if !hasOld && hasNew {
-			// Line only in new
-			result.WriteString("+" + newLine + "\n")
-		} else if hasOld && !hasNew {
-			// Line only in old
-			result.WriteString("-" + oldLine + "\n")
-		} else if oldLine != newLine {
-			// Both exist but differ
-			result.WriteString("-" + oldLine + "\n")
-			result.WriteString("+" + newLine + "\n")
-		} else {
-			// Lines are the same (including empty lines)
-			result.WriteString(" " + oldLine + "\n")
-		}
-	}
-
-	return result.String()
-}
-
 // GetStagedFiles returns a list of file paths that have staged changes.
 // The list includes added, modified, and deleted files.
 func (r *Repository) GetStagedFiles() ([]string, error) {
@@ -308,6 +250,17 @@ func (r *Repository) Commit(message string) (string, error) {
 	}
 
 	return hash.String(), nil
+}
+
+// Root returns the absolute path to the repository root directory.
+// This is the top-level directory containing the .git folder, which serves
+// as the base for resolving relative file paths within the repository.
+func (r *Repository) Root() (string, error) {
+	worktree, err := r.repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get repository root directory (worktree unavailable): %w", err)
+	}
+	return worktree.Filesystem.Root(), nil
 }
 
 // HasStagedChanges returns true if there are any staged changes in the repository.

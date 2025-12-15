@@ -81,6 +81,30 @@ type Issue struct {
 	Severity    string `json:"severity"` // high, medium, low
 	Description string `json:"description"`
 	Location    string `json:"location,omitempty"` // file:line if available
+	Fix         *Fix   `json:"fix,omitempty"`
+}
+
+// Fix represents a suggested fix for an issue.
+// When Available is true, Code/FilePath/StartLine/EndLine/Explanation fields contain
+// the concrete fix to apply. When Available is false, Reason explains why auto-fix
+// is not possible and Alternatives may suggest manual remediation steps.
+type Fix struct {
+	// Available indicates whether an automatic fix can be applied for this issue
+	Available bool `json:"available"`
+	// Code is the corrected code snippet (when Available is true)
+	Code string `json:"code,omitempty"`
+	// FilePath is the file path where the fix should be applied (when Available is true)
+	FilePath string `json:"file_path,omitempty"`
+	// StartLine is the first line number to replace (when Available is true)
+	StartLine int `json:"start_line,omitempty"`
+	// EndLine is the last line number to replace, inclusive (when Available is true)
+	EndLine int `json:"end_line,omitempty"`
+	// Explanation describes why the fix resolves the issue (when Available is true)
+	Explanation string `json:"explanation,omitempty"`
+	// Reason explains why an automatic fix is not available (when Available is false)
+	Reason string `json:"reason,omitempty"`
+	// Alternatives lists suggested manual remediation steps (when Available is false)
+	Alternatives []string `json:"alternatives,omitempty"`
 }
 
 // Result represents the result of a single review

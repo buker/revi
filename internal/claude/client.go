@@ -87,7 +87,21 @@ Review the following git diff and respond with ONLY valid JSON in this exact for
   "status": "issues_found" or "no_issues",
   "summary": "brief 1-2 sentence summary",
   "issues": [
-    {"severity": "high|medium|low", "description": "issue description", "location": "file:line if known"}
+    {
+      "severity": "high|medium|low",
+      "description": "issue description",
+      "location": "file:line if known",
+      "fix": {
+        "available": true or false,
+        "code": "replacement code with proper indentation (only if available=true)",
+        "file_path": "path/to/file.go (only if available=true)",
+        "start_line": 42,
+        "end_line": 42,
+        "explanation": "why this fix works (only if available=true)",
+        "reason": "why fix unavailable (only if available=false)",
+        "alternatives": ["manual step 1", "manual step 2"]
+      }
+    }
   ],
   "suggestions": ["suggestion 1", "suggestion 2"]
 }
@@ -96,6 +110,12 @@ Important:
 - Only report issues related to %s
 - Be concise and actionable
 - If no issues found, return empty issues array and status "no_issues"
+- For each issue, include a "fix" object:
+  - Set available=true if the fix can be auto-applied (simple code replacement)
+  - Set available=false if the fix requires architectural changes, manual decisions, or spans multiple files
+  - For available fixes: include code, file_path, start_line, end_line, explanation
+  - For unavailable fixes: include reason and alternatives (manual steps the user can take)
+  - The code field should contain the exact replacement text with proper indentation
 
 Git diff:
 %s`, modeInfo.Name, modeInfo.Description, mode, modeInfo.Name, diff)
@@ -146,18 +166,29 @@ func (m *CommitMessage) String() string {
 	return msg
 }
 
-// GenerateCommitMessage generates a conventional commit message for the diff
-func (c *Client) GenerateCommitMessage(ctx context.Context, diff string) (*CommitMessage, error) {
+// GenerateCommitMessage generates a conventional commit message for the diff.
+// If context is provided, it will be included in the prompt to explain
+// the reasoning behind the change.
+func (c *Client) GenerateCommitMessage(ctx context.Context, diff string, context string) (*CommitMessage, error) {
 	diff = truncateDiff(diff)
 
-	prompt := fmt.Sprintf(`Generate a conventional commit message for the following git diff.
+	contextSection := ""
+	if context != "" {
+		contextSection = fmt.Sprintf(`
+Context (why this change was made):
+%s
 
+`, context)
+	}
+
+	prompt := fmt.Sprintf(`Generate a conventional commit message for the following git diff.
+%s
 Respond with ONLY valid JSON in this exact format:
 {
   "type": "feat|fix|docs|style|refactor|perf|test|chore",
   "scope": "optional scope",
   "subject": "imperative mood, lowercase, no period, max 50 chars",
-  "body": "optional longer description"
+  "body": "optional longer description explaining WHY this change was made"
 }
 
 Commit types:
@@ -171,7 +202,7 @@ Commit types:
 - chore: maintenance tasks
 
 Git diff:
-%s`, diff)
+%s`, contextSection, diff)
 
 	output, err := c.run(ctx, prompt)
 	if err != nil {
@@ -287,8 +318,16 @@ func (c *Client) run(ctx context.Context, prompt string) ([]byte, error) {
 		c := result[i]
 
 		// Handle string boundaries (accounting for escaped quotes)
-		if c == '"' && (i == 0 || result[i-1] != '\\') {
-			inString = !inString
+		if c == '"' {
+			// Count consecutive backslashes before this quote
+			backslashes := 0
+			for j := i - 1; j >= 0 && result[j] == '\\'; j-- {
+				backslashes++
+			}
+			// Quote is escaped only if preceded by odd number of backslashes
+			if backslashes%2 == 0 {
+				inString = !inString
+			}
 			continue
 		}
 
