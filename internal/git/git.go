@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -244,12 +246,55 @@ func (r *Repository) Commit(message string) (string, error) {
 		return "", fmt.Errorf("failed to get worktree: %w", err)
 	}
 
-	hash, err := worktree.Commit(message, &git.CommitOptions{})
+	author := r.getAuthorSignature()
+
+	hash, err := worktree.Commit(message, &git.CommitOptions{
+		Author: author,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create commit: %w", err)
 	}
 
 	return hash.String(), nil
+}
+
+// getAuthorSignature returns an author signature for commits.
+// It tries to read from git config first, then falls back to environment
+// variables (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL), and finally uses defaults.
+func (r *Repository) getAuthorSignature() *object.Signature {
+	name := ""
+	email := ""
+
+	// Try to get from git config
+	cfg, err := r.repo.Config()
+	if err == nil && cfg.User.Name != "" {
+		name = cfg.User.Name
+	}
+	if err == nil && cfg.User.Email != "" {
+		email = cfg.User.Email
+	}
+
+	// Fall back to environment variables
+	if name == "" {
+		name = os.Getenv("GIT_AUTHOR_NAME")
+	}
+	if email == "" {
+		email = os.Getenv("GIT_AUTHOR_EMAIL")
+	}
+
+	// Fall back to defaults
+	if name == "" {
+		name = "revi"
+	}
+	if email == "" {
+		email = "revi@localhost"
+	}
+
+	return &object.Signature{
+		Name:  name,
+		Email: email,
+		When:  time.Now(),
+	}
 }
 
 // Root returns the absolute path to the repository root directory.
