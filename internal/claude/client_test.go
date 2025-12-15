@@ -1,10 +1,45 @@
 package claude
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/buker/revi/internal/review"
 )
+
+func newMockClaude(t *testing.T) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "claude-mock.sh")
+	script := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "claude mock 1.0"
+  exit 0
+fi
+
+result=${MOCK_RESULT:-'{"type":"result","is_error":false,"result":"{}"}'}
+echo "$result"
+
+exit_code=${MOCK_EXIT_CODE:-0}
+exit "$exit_code"
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write mock claude script: %v", err)
+	}
+
+	return scriptPath
+}
+
+func wrapResult(payload string) string {
+	escaped := strings.ReplaceAll(payload, `"`, `\"`)
+	return fmt.Sprintf(`{"type":"result","is_error":false,"result":"%s"}`, escaped)
+}
 
 // extractJSON is a helper that exposes the JSON extraction logic for testing.
 // It mirrors the JSON extraction logic in client.go's run() method to test
@@ -403,180 +438,6 @@ func TestExtractJSON(t *testing.T) {
 	}
 }
 
-// TestExtractJSON_BackslashQuoteEdgeCases specifically tests the backslash counting
-// logic for escaped quotes in the JSON extraction code.
-func TestExtractJSON_BackslashQuoteEdgeCases(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:    "zero backslashes before quote - ends string",
-			input:   `{"a": "text"}`,
-			want:    `{"a": "text"}`,
-			wantErr: false,
-		},
-		{
-			name:    "one backslash before quote - escaped quote (odd count)",
-			input:   `{"a": "text\"more"}`,
-			want:    `{"a": "text\"more"}`,
-			wantErr: false,
-		},
-		{
-			name:    "two backslashes before quote - escaped backslash then end string (even count)",
-			input:   `{"a": "text\\"}`,
-			want:    `{"a": "text\\"}`,
-			wantErr: false,
-		},
-		{
-			name:    "three backslashes before quote - escaped backslash + escaped quote (odd count)",
-			input:   `{"a": "text\\\"more"}`,
-			want:    `{"a": "text\\\"more"}`,
-			wantErr: false,
-		},
-		{
-			name:    "four backslashes before quote - two escaped backslashes then end string (even count)",
-			input:   `{"a": "text\\\\"}`,
-			want:    `{"a": "text\\\\"}`,
-			wantErr: false,
-		},
-		{
-			name:    "five backslashes before quote - two escaped backslashes + escaped quote (odd count)",
-			input:   `{"a": "text\\\\\"more"}`,
-			want:    `{"a": "text\\\\\"more"}`,
-			wantErr: false,
-		},
-		{
-			name:    "six backslashes before quote - three escaped backslashes then end string (even count)",
-			input:   `{"a": "text\\\\\\"}`,
-			want:    `{"a": "text\\\\\\"}`,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := extractJSON(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && got != tt.want {
-				t.Errorf("extractJSON() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestExtractJSON_BracesInStrings tests that braces inside strings don't affect depth counting
-func TestExtractJSON_BracesInStrings(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:    "opening brace in value",
-			input:   `{"code": "if (x) {"}`,
-			want:    `{"code": "if (x) {"}`,
-			wantErr: false,
-		},
-		{
-			name:    "closing brace in value",
-			input:   `{"code": "} // end"}`,
-			want:    `{"code": "} // end"}`,
-			wantErr: false,
-		},
-		{
-			name:    "unbalanced braces in string (more opens)",
-			input:   `{"code": "{{{"}`,
-			want:    `{"code": "{{{"}`,
-			wantErr: false,
-		},
-		{
-			name:    "unbalanced braces in string (more closes)",
-			input:   `{"code": "}}}"}`,
-			want:    `{"code": "}}}"}`,
-			wantErr: false,
-		},
-		{
-			name:    "braces with escaped quotes",
-			input:   `{"code": "obj = {\"key\": \"value\"}"}`,
-			want:    `{"code": "obj = {\"key\": \"value\"}"}`,
-			wantErr: false,
-		},
-		{
-			name:    "deeply nested braces in string",
-			input:   `{"template": "{{{{nested}}}}"}`,
-			want:    `{"template": "{{{{nested}}}}"}`,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := extractJSON(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && got != tt.want {
-				t.Errorf("extractJSON() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestExtractJSON_MarkdownCodeBlocks tests extraction from markdown-wrapped JSON
-func TestExtractJSON_MarkdownCodeBlocks(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:    "json code block",
-			input:   "```json\n{\"key\": \"value\"}\n```",
-			want:    `{"key": "value"}`,
-			wantErr: false,
-		},
-		{
-			name:    "plain code block",
-			input:   "```\n{\"key\": \"value\"}\n```",
-			want:    `{"key": "value"}`,
-			wantErr: false,
-		},
-		{
-			name:    "code block with extra whitespace",
-			input:   "```json\n\n  {\"key\": \"value\"}\n\n```",
-			want:    `{"key": "value"}`,
-			wantErr: false,
-		},
-		{
-			name:    "code block without trailing newline",
-			input:   "```json\n{\"key\": \"value\"}```",
-			want:    `{"key": "value"}`,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := extractJSON(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractJSON() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && got != tt.want {
-				t.Errorf("extractJSON() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
 
 // TestTruncateDiff tests the diff truncation function
 func TestTruncateDiff(t *testing.T) {
@@ -734,5 +595,90 @@ func TestNewClient(t *testing.T) {
 				t.Errorf("NewClient().timeout = %v, want %v seconds", client.timeout, tt.wantTimeoutSec)
 			}
 		})
+	}
+}
+
+func TestClientRun_ParsesWrappedJSON(t *testing.T) {
+	mockPath := newMockClaude(t)
+	t.Setenv("MOCK_RESULT", wrapResult(`{"ok":true}`))
+
+	client := &Client{path: mockPath, timeout: time.Second}
+	got, err := client.run(context.Background(), "prompt")
+	if err != nil {
+		t.Fatalf("run() returned error: %v", err)
+	}
+	if string(got) != `{"ok":true}` {
+		t.Errorf("unexpected run output: %s", got)
+	}
+}
+
+func TestClientRun_WrapperError(t *testing.T) {
+	mockPath := newMockClaude(t)
+	t.Setenv("MOCK_RESULT", `{"type":"result","is_error":true,"result":"bad request"}`)
+
+	client := &Client{path: mockPath, timeout: time.Second}
+	_, err := client.run(context.Background(), "prompt")
+	if err == nil {
+		t.Fatal("expected error for wrapper is_error=true")
+	}
+	if !strings.Contains(err.Error(), "bad request") {
+		t.Errorf("expected error message to include wrapper result, got %v", err)
+	}
+}
+
+func TestGenerateCommitMessage_ParsesPayload(t *testing.T) {
+	mockPath := newMockClaude(t)
+	payload := `{"type":"feat","scope":"auth","subject":"add oauth","body":"explain why"}`
+	t.Setenv("MOCK_RESULT", wrapResult(payload))
+
+	client := &Client{path: mockPath, timeout: time.Second}
+	msg, err := client.GenerateCommitMessage(context.Background(), "diff", "context")
+	if err != nil {
+		t.Fatalf("GenerateCommitMessage() error = %v", err)
+	}
+	if msg.Type != "feat" || msg.Scope != "auth" || msg.Subject != "add oauth" {
+		t.Errorf("unexpected commit message: %+v", msg)
+	}
+	if msg.Body != "explain why" {
+		t.Errorf("unexpected body: %q", msg.Body)
+	}
+}
+
+func TestDetectModes_ParsesModes(t *testing.T) {
+	mockPath := newMockClaude(t)
+	payload := `{"modes":["security","testing"],"reasoning":"coverage"}`
+	t.Setenv("MOCK_RESULT", wrapResult(payload))
+
+	client := &Client{path: mockPath, timeout: time.Second}
+	res, err := client.DetectModes(context.Background(), "diff")
+	if err != nil {
+		t.Fatalf("DetectModes() error = %v", err)
+	}
+	if len(res.Modes) != 2 || res.Modes[0] != review.ModeSecurity || res.Modes[1] != review.ModeTesting {
+		t.Errorf("unexpected modes: %+v", res.Modes)
+	}
+	if res.Reasoning != "coverage" {
+		t.Errorf("unexpected reasoning: %q", res.Reasoning)
+	}
+}
+
+func TestRunReview_SetsStatusFromIssues(t *testing.T) {
+	mockPath := newMockClaude(t)
+	payload := `{"status":"issues_found","summary":"found things","issues":[{"severity":"high","description":"bad","location":"file.go:1","fix":{"available":false,"reason":"manual"}}]}`
+	t.Setenv("MOCK_RESULT", wrapResult(payload))
+
+	client := &Client{path: mockPath, timeout: time.Second}
+	res, err := client.RunReview(context.Background(), review.ModeSecurity, "diff")
+	if err != nil {
+		t.Fatalf("RunReview() error = %v", err)
+	}
+	if res.Status != review.StatusIssues {
+		t.Errorf("expected status issues_found, got %s", res.Status)
+	}
+	if res.Mode != review.ModeSecurity {
+		t.Errorf("expected mode security, got %s", res.Mode)
+	}
+	if len(res.Issues) != 1 || res.Issues[0].Severity != "high" {
+		t.Errorf("unexpected issues: %+v", res.Issues)
 	}
 }

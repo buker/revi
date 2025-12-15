@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,48 +103,77 @@ func (r *Repository) GetStagedDiff() (string, error) {
 
 	var diffBuilder strings.Builder
 
-	// Compare each staged file with HEAD
+	// Build quick lookup for index entry hashes (staging area content).
+	indexHashByPath := make(map[string]plumbing.Hash, len(idx.Entries))
 	for _, entry := range idx.Entries {
-		fileStatus := status.File(entry.Name)
-		if fileStatus.Staging == git.Unmodified {
-			continue
-		}
+		indexHashByPath[entry.Name] = entry.Hash
+	}
 
-		diffBuilder.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", entry.Name, entry.Name))
+	// Iterate over staged paths from status, not index entries, so we handle
+	// deletion-only changes (deleted files may not appear in idx.Entries).
+	var stagedPaths []string
+	for path, s := range status {
+		if s.Staging != git.Unmodified && s.Staging != git.Untracked {
+			stagedPaths = append(stagedPaths, path)
+		}
+	}
+	sort.Strings(stagedPaths) // deterministic output (useful for tests)
+
+	for _, path := range stagedPaths {
+		fileStatus := status.File(path)
 
 		switch fileStatus.Staging {
 		case git.Added:
+			diffBuilder.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", path, path))
 			diffBuilder.WriteString("new file mode 100644\n")
-			content, err := r.getIndexFileContent(entry.Hash)
-			if err != nil {
-				return "", fmt.Errorf("failed to get content for added file %s: %w", entry.Name, err)
+			hash, ok := indexHashByPath[path]
+			if !ok {
+				return "", fmt.Errorf("failed to get index entry for added file %s", path)
 			}
-			diffBuilder.WriteString(fmt.Sprintf("+++ b/%s\n", entry.Name))
+			content, err := r.getIndexFileContent(hash)
+			if err != nil {
+				return "", fmt.Errorf("failed to get content for added file %s: %w", path, err)
+			}
+			diffBuilder.WriteString(fmt.Sprintf("--- /dev/null\n+++ b/%s\n", path))
 			for _, line := range strings.Split(content, "\n") {
 				diffBuilder.WriteString("+" + line + "\n")
 			}
 		case git.Deleted:
+			diffBuilder.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", path, path))
 			diffBuilder.WriteString("deleted file mode 100644\n")
-			content, err := r.getTreeFileContent(headTree, entry.Name)
+			content, err := r.getTreeFileContent(headTree, path)
 			if err != nil {
-				return "", fmt.Errorf("failed to get content for deleted file %s: %w", entry.Name, err)
+				return "", fmt.Errorf("failed to get content for deleted file %s: %w", path, err)
 			}
-			diffBuilder.WriteString(fmt.Sprintf("--- a/%s\n", entry.Name))
+			diffBuilder.WriteString(fmt.Sprintf("--- a/%s\n+++ /dev/null\n", path))
 			for _, line := range strings.Split(content, "\n") {
 				diffBuilder.WriteString("-" + line + "\n")
 			}
 		case git.Modified:
-			oldContent, err := r.getTreeFileContent(headTree, entry.Name)
-			if err != nil {
-				return "", fmt.Errorf("failed to get old content for modified file %s: %w", entry.Name, err)
+			hash, ok := indexHashByPath[path]
+			if !ok {
+				return "", fmt.Errorf("failed to get index entry for modified file %s", path)
 			}
-			newContent, err := r.getIndexFileContent(entry.Hash)
+			oldContent, err := r.getTreeFileContent(headTree, path)
 			if err != nil {
-				return "", fmt.Errorf("failed to get new content for modified file %s: %w", entry.Name, err)
+				return "", fmt.Errorf("failed to get old content for modified file %s: %w", path, err)
 			}
-			// Use go-diff-patch library for proper unified diff generation
-			patch := godiffpatch.GeneratePatch(entry.Name, oldContent, newContent)
+			newContent, err := r.getIndexFileContent(hash)
+			if err != nil {
+				return "", fmt.Errorf("failed to get new content for modified file %s: %w", path, err)
+			}
+			// Use go-diff-patch library for proper unified diff generation.
+			patch := godiffpatch.GeneratePatch(path, oldContent, newContent)
+			// Some patch generators omit the git-style header; our tests and downstream
+			// tooling expect it.
+			if !strings.HasPrefix(patch, "diff --git ") {
+				diffBuilder.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", path, path))
+			}
 			diffBuilder.WriteString(patch)
+		default:
+			// Best-effort: ignore uncommon staged statuses (renames/conflicts),
+			// rather than failing the entire diff generation.
+			continue
 		}
 		diffBuilder.WriteString("\n")
 	}

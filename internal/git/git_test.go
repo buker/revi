@@ -343,29 +343,25 @@ func TestGetStagedDiff_UnifiedDiffFormat_DeletedFile(t *testing.T) {
 
 	// Get the diff - this tests the deletion code path
 	diff, err := repo.GetStagedDiff()
-
-	// Document current behavior: deletion-only changes return ErrNoStagedChanges
-	// because idx.Entries doesn't include deleted files
-	if err == ErrNoStagedChanges {
-		t.Log("Verified: GetStagedDiff returns ErrNoStagedChanges for deletion-only changes (known limitation)")
-		return
-	}
-
 	if err != nil {
 		t.Fatalf("GetStagedDiff() failed: %v", err)
 	}
 
-	// If implementation changes to support deletions, verify proper diff format
-	if diff != "" {
-		if !strings.Contains(diff, "diff --git a/initial.txt b/initial.txt") {
-			t.Error("diff should contain git diff header for deleted file")
-		}
-		if !strings.Contains(diff, "deleted file mode") {
-			t.Error("diff should indicate deleted file mode")
-		}
-		if !strings.Contains(diff, "-initial content") {
-			t.Error("diff should show deleted content as removal")
-		}
+	// Verify proper unified diff format for deletions
+	if !strings.Contains(diff, "diff --git a/initial.txt b/initial.txt") {
+		t.Error("diff should contain git diff header for deleted file")
+	}
+	if !strings.Contains(diff, "deleted file mode") {
+		t.Error("diff should indicate deleted file mode")
+	}
+	if !strings.Contains(diff, "--- a/initial.txt") {
+		t.Error("diff should contain --- marker for deleted file")
+	}
+	if !strings.Contains(diff, "+++ /dev/null") {
+		t.Error("diff should contain +++ /dev/null marker for deleted file")
+	}
+	if !strings.Contains(diff, "-initial content") {
+		t.Error("diff should show deleted content as removal")
 	}
 }
 

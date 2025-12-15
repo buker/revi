@@ -279,14 +279,46 @@ func (c *Client) run(ctx context.Context, prompt string) ([]byte, error) {
 		return nil, fmt.Errorf("claude returned error: %s", wrapper.Result)
 	}
 
-	// The AI's response in wrapper.Result is a string that should contain JSON,
-	// but Claude often wraps JSON in markdown code blocks like:
-	// ```json
-	// {"key": "value"}
-	// ```
-	// We need to extract the raw JSON from this format.
-	result := wrapper.Result
+	return extractJSONFromClaudeResult(wrapper.Result)
+}
 
+// IsAvailable checks if the Claude CLI is available
+func (c *Client) IsAvailable() error {
+	cmd := exec.Command(c.path, "--version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("claude CLI not found at '%s': %w\nInstall from: https://claude.ai/download", c.path, err)
+	}
+	return nil
+}
+
+// truncateDiff truncates a diff to MaxDiffSize if it's too large
+func truncateDiff(diff string) string {
+	if len(diff) <= MaxDiffSize {
+		return diff
+	}
+
+	// Find a good truncation point (end of a line)
+	truncateAt := MaxDiffSize
+	for i := MaxDiffSize; i > MaxDiffSize-1000 && i > 0; i-- {
+		if diff[i] == '\n' {
+			truncateAt = i
+			break
+		}
+	}
+
+	return diff[:truncateAt] + "\n\n[... diff truncated due to size limits ...]"
+}
+
+// extractJSONFromClaudeResult extracts the first JSON object from a Claude response string.
+//
+// Claude often wraps JSON in markdown code blocks or adds extra text, e.g.:
+// ```json
+// {"key": "value"}
+// ```
+//
+// This function trims markdown fences, finds the first '{', then scans for the
+// matching closing brace while correctly ignoring braces inside strings.
+func extractJSONFromClaudeResult(result string) ([]byte, error) {
 	// Strip markdown code block formatting if present.
 	// Handle both ```json and plain ``` markers.
 	result = strings.TrimSpace(result)
@@ -353,31 +385,4 @@ func (c *Client) run(ctx context.Context, prompt string) ([]byte, error) {
 
 	// Return only the extracted JSON object bytes.
 	return []byte(result[start:end]), nil
-}
-
-// IsAvailable checks if the Claude CLI is available
-func (c *Client) IsAvailable() error {
-	cmd := exec.Command(c.path, "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("claude CLI not found at '%s': %w\nInstall from: https://claude.ai/download", c.path, err)
-	}
-	return nil
-}
-
-// truncateDiff truncates a diff to MaxDiffSize if it's too large
-func truncateDiff(diff string) string {
-	if len(diff) <= MaxDiffSize {
-		return diff
-	}
-
-	// Find a good truncation point (end of a line)
-	truncateAt := MaxDiffSize
-	for i := MaxDiffSize; i > MaxDiffSize-1000 && i > 0; i-- {
-		if diff[i] == '\n' {
-			truncateAt = i
-			break
-		}
-	}
-
-	return diff[:truncateAt] + "\n\n[... diff truncated due to size limits ...]"
 }
