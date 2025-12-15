@@ -91,3 +91,4 @@ go test -v ./internal/review -run TestFunctionName
 1. Search pkg.go.dev for existing solutions
 2. Check if go-git or other dependencies already provide the functionality
 3. Only write custom code if no suitable library exists
+- 3
