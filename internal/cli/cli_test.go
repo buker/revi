@@ -217,7 +217,7 @@ func TestRootCmd_HasExpectedSubcommands(t *testing.T) {
 func TestRootCmd_HasDryRunFlag(t *testing.T) {
 	flag := rootCmd.Flags().Lookup("dry-run")
 	if flag == nil {
-		t.Error("expected --dry-run flag on root command")
+		t.Fatal("expected --dry-run flag on root command")
 	}
 	if flag.Shorthand != "n" {
 		t.Errorf("expected shorthand 'n' for dry-run, got %q", flag.Shorthand)
@@ -227,7 +227,7 @@ func TestRootCmd_HasDryRunFlag(t *testing.T) {
 func TestRootCmd_HasMessageFlag(t *testing.T) {
 	flag := rootCmd.Flags().Lookup("message")
 	if flag == nil {
-		t.Error("expected --message flag on root command")
+		t.Fatal("expected --message flag on root command")
 	}
 	if flag.Shorthand != "m" {
 		t.Errorf("expected shorthand 'm' for message, got %q", flag.Shorthand)
@@ -287,7 +287,7 @@ func TestCommitCmd_HasSameFlags(t *testing.T) {
 func TestReviewCmd_HasFixFlag(t *testing.T) {
 	flag := reviewCmd.Flags().Lookup("fix")
 	if flag == nil {
-		t.Error("expected --fix flag on review command")
+		t.Fatal("expected --fix flag on review command")
 	}
 	if flag.Shorthand != "f" {
 		t.Errorf("expected shorthand 'f' for fix, got %q", flag.Shorthand)

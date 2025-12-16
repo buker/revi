@@ -11,6 +11,7 @@ import (
 	"github.com/buker/revi/internal/fix"
 	"github.com/buker/revi/internal/git"
 	"github.com/buker/revi/internal/review"
+	"github.com/buker/revi/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +22,9 @@ func init() {
 	// Block flags
 	reviewCmd.Flags().BoolP("block", "b", true, "Exit with error if high-severity issues found")
 	reviewCmd.Flags().BoolP("no-block", "B", false, "Don't exit with error on issues")
+
+	// TUI flag
+	reviewCmd.Flags().Bool("no-tui", false, "Disable TUI (use plain text output)")
 
 	// Review mode flags
 	reviewCmd.Flags().Bool("security", false, "Enable security review")
@@ -81,6 +85,77 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get staged diff: %w", err)
 	}
 
+	noTUI, err := cmd.Flags().GetBool("no-tui")
+	if err != nil {
+		return fmt.Errorf("failed to get no-tui flag: %w", err)
+	}
+	if noTUI {
+		return runReviewTextMode(cmd, ctx, claudeClient, repo, diff)
+	}
+
+	return runReviewTUI(cmd, ctx, claudeClient, repo, diff)
+}
+
+// runReviewTUI runs the review workflow with the interactive TUI
+func runReviewTUI(cmd *cobra.Command, ctx context.Context, claudeClient *claude.Client, repo *git.Repository, diff string) error {
+	allModes, _ := cmd.Flags().GetBool("all")
+	blockOnIssues := isBlockEnabled(cmd)
+
+	// Get repository root for fix applier
+	repoRoot, err := repo.Root()
+	if err != nil {
+		return fmt.Errorf("failed to get repository root: %w", err)
+	}
+	// Define mode detection function
+	detectFunc := func(ctx context.Context) ([]review.Mode, string, error) {
+		if allModes {
+			return review.AllModes(), "All modes enabled", nil
+		}
+
+		detector := review.NewClaudeDetector(claudeClient.DetectModes)
+		modes, reasoning, err := detector.Detect(ctx, diff)
+		if err != nil {
+			// Fallback to heuristic
+			heuristic := review.NewHeuristicDetector()
+			modes, reasoning, err = heuristic.Detect(ctx, diff)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to detect review modes: %w", err)
+			}
+		}
+		modes = filterModesByFlags(cmd, modes)
+		return modes, reasoning, nil
+	}
+		detector := review.NewClaudeDetector(claudeClient.DetectModes)
+		modes, reasoning, err := detector.Detect(ctx, diff)
+		if err != nil {
+			// Fallback to heuristic
+			heuristic := review.NewHeuristicDetector()
+			modes, reasoning, _ = heuristic.Detect(ctx, diff)
+		}
+		modes = filterModesByFlags(cmd, modes)
+		return modes, reasoning, nil
+	}
+
+	// Define review function
+	reviewFunc := func(ctx context.Context, mode review.Mode) (*review.Result, error) {
+		return claudeClient.RunReview(ctx, mode, diff)
+	}
+
+	// Run the TUI workflow
+	if err := program.RunReviewOnly(ctx, detectFunc, reviewFunc, blockOnIssues); err != nil {
+		return err
+	}
+
+	// Check final state
+	if program.IsBlocked() {
+		return fmt.Errorf("high-severity issues found")
+	}
+
+	return nil
+}
+
+// runReviewTextMode runs the review workflow with plain text output (original behavior)
+func runReviewTextMode(cmd *cobra.Command, ctx context.Context, claudeClient *claude.Client, repo *git.Repository, diff string) error {
 	fmt.Println("revi - AI Code Review")
 	fmt.Println(strings.Repeat("-", 40))
 
@@ -89,6 +164,7 @@ func runReview(cmd *cobra.Command, args []string) error {
 
 	var modes []review.Mode
 	var reasoning string
+	var err error
 
 	allModes, _ := cmd.Flags().GetBool("all")
 	if allModes {

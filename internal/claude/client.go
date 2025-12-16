@@ -110,12 +110,15 @@ Important:
 - Only report issues related to %s
 - Be concise and actionable
 - If no issues found, return empty issues array and status "no_issues"
+- EVERY issue MUST have a concrete fix with available=true. Do NOT report issues you cannot fix.
 - For each issue, include a "fix" object:
-  - Set available=true if the fix can be auto-applied (simple code replacement)
-  - Set available=false if the fix requires architectural changes, manual decisions, or spans multiple files
-  - For available fixes: include code, file_path, start_line, end_line, explanation
-  - For unavailable fixes: include reason and alternatives (manual steps the user can take)
-  - The code field should contain the exact replacement text with proper indentation
+  - The fix MUST be real, working code - NEVER use TODO comments, placeholder text, or "implement this" stubs
+  - Set available=true and provide the complete corrected code in the "code" field
+  - The code field must contain the exact replacement text with proper indentation
+  - Include file_path, start_line, end_line, and explanation for all fixes
+  - Only set available=false in rare cases where the fix truly requires human judgment (e.g., business logic decisions, choosing between multiple valid architectures). In these cases, explain clearly in "reason" why you cannot decide.
+  - If you cannot provide a real fix for an issue, do NOT report that issue at all
+- Do NOT include fixes that say "add validation here" or "handle error" - show the actual code
 
 Git diff:
 %s`, modeInfo.Name, modeInfo.Description, mode, modeInfo.Name, diff)

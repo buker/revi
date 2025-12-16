@@ -18,7 +18,7 @@ type Program struct {
 // NewProgram creates and initializes a new TUI Program ready to be started.
 func NewProgram() *Program {
 	model := NewModel()
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithAltScreen())
 	return &Program{
 		program: program,
 		model:   model,
@@ -68,6 +68,11 @@ func (p *Program) SetError(err string) {
 	p.Send(MsgError{Error: err})
 }
 
+// SetFixApplied notifies the TUI that a fix was applied
+func (p *Program) SetFixApplied(issueIndex int, success bool, errMsg string) {
+	p.Send(MsgFixApplied{IssueIndex: issueIndex, Success: success, Error: errMsg})
+}
+
 // Quit quits the TUI
 func (p *Program) Quit() {
 	p.Send(MsgQuit{})
@@ -86,6 +91,26 @@ func (p *Program) IsBlocked() bool {
 // GetCommitMessage returns the generated commit message
 func (p *Program) GetCommitMessage() string {
 	return p.model.GetCommitMessage()
+}
+
+// GetSelectedFix returns the fix for the currently selected issue
+func (p *Program) GetSelectedFix() *review.Fix {
+	return p.model.GetSelectedFix()
+}
+
+// GetSelectedIssueIndex returns the index of the currently selected issue
+func (p *Program) GetSelectedIssueIndex() int {
+	return p.model.GetSelectedIssueIndex()
+}
+
+// GetFixedIssues returns the map of fixed issue indices
+func (p *Program) GetFixedIssues() map[int]bool {
+	return p.model.GetFixedIssues()
+}
+
+// SetFixApplier sets the callback function for applying fixes
+func (p *Program) SetFixApplier(applier FixApplier) {
+	p.model.SetFixApplier(applier)
 }
 
 // RunWithCallbacks orchestrates the complete review workflow with real-time TUI updates.
@@ -160,6 +185,73 @@ func (p *Program) RunWithCallbacks(
 		return <-errCh
 	}
 	p.SetCommitGenerated(message)
+
+	return <-errCh
+}
+
+// RunReviewOnly orchestrates a review-only workflow without commit generation.
+// It starts the TUI in a background goroutine, then executes mode detection and parallel reviews,
+// updating the TUI at each step. Returns when the TUI exits.
+func (p *Program) RunReviewOnly(
+	ctx context.Context,
+	detectFunc func(ctx context.Context) ([]review.Mode, string, error),
+	reviewFunc func(ctx context.Context, mode review.Mode) (*review.Result, error),
+	blockOnIssues bool,
+) error {
+	// Run TUI in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- p.Start()
+	}()
+
+	// Detect modes
+	modes, reasoning, err := detectFunc(ctx)
+	if err != nil {
+		p.SetError(err.Error())
+		return <-errCh
+	}
+	p.SetModesDetected(modes, reasoning)
+
+	// Run reviews in parallel
+	results := make([]*review.Result, len(modes))
+	resultsCh := make(chan struct {
+		idx    int
+		result *review.Result
+	}, len(modes))
+
+	for i, mode := range modes {
+		go func(idx int, m review.Mode) {
+			p.SetReviewStarted(m)
+			result, err := reviewFunc(ctx, m)
+			if err != nil {
+				result = &review.Result{
+					Mode:   m,
+					Status: review.StatusFailed,
+					Error:  err.Error(),
+				}
+			}
+			p.SetReviewComplete(result)
+			resultsCh <- struct {
+				idx    int
+				result *review.Result
+			}{idx, result}
+		}(i, mode)
+	}
+
+	// Collect results
+	for range modes {
+		r := <-resultsCh
+		results[r.idx] = r.result
+	}
+
+	// Check if should block
+	blocked := review.ShouldBlock(results, blockOnIssues)
+	blockReason := review.GetBlockReason(results)
+	p.SetAllReviewsComplete(results, blocked, blockReason)
+
+	// For review-only, we don't generate commit message but still allow
+	// user to browse issues and apply fixes
+	// The TUI will stay open until user quits
 
 	return <-errCh
 }
