@@ -1,0 +1,53 @@
+version: 2
+
+project_name: revi
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: revi
+    main: ./cmd/revi
+    binary: revi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'github.com/buker/revi/internal/cli.Version={{.Version}}'
+
+archives:
+  - id: revi
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "revi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: buker
+    name: revi
+  draft: false
+  prerelease: auto
