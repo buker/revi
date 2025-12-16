@@ -97,4 +97,20 @@ go test -v ./internal/review -run TestFunctionName
 1. Search pkg.go.dev for existing solutions
 2. Check if go-git or other dependencies already provide the functionality
 3. Only write custom code if no suitable library exists
-- 3
+
+### Test-Driven Development (TDD)
+
+**Follow a TDD approach when implementing new features or fixing bugs:**
+1. Write tests first that define the expected behavior
+2. Run tests to confirm they fail (verifying the test is valid)
+3. Implement the minimum code to make tests pass
+4. Refactor while keeping tests green
+
+### Testing Standards
+
+**Tests must properly cover functionality:**
+- Write meaningful tests that verify actual behavior, not just coverage
+- **Never skip tests** (`t.Skip()`) unless there's a documented, temporary reason
+- **No workarounds** - if a test is hard to write, fix the design, don't work around it
+- Test edge cases and error conditions, not just happy paths
+- Use table-driven tests for multiple input scenarios
