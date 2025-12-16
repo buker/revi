@@ -101,11 +101,9 @@ func runReviewTUI(cmd *cobra.Command, ctx context.Context, claudeClient *claude.
 	allModes, _ := cmd.Flags().GetBool("all")
 	blockOnIssues := isBlockEnabled(cmd)
 
-	// Get repository root for fix applier
-	repoRoot, err := repo.Root()
-	if err != nil {
-		return fmt.Errorf("failed to get repository root: %w", err)
-	}
+	// Create the TUI program
+	program := tui.NewProgram()
+
 	// Define mode detection function
 	detectFunc := func(ctx context.Context) ([]review.Mode, string, error) {
 		if allModes {
@@ -121,16 +119,6 @@ func runReviewTUI(cmd *cobra.Command, ctx context.Context, claudeClient *claude.
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to detect review modes: %w", err)
 			}
-		}
-		modes = filterModesByFlags(cmd, modes)
-		return modes, reasoning, nil
-	}
-		detector := review.NewClaudeDetector(claudeClient.DetectModes)
-		modes, reasoning, err := detector.Detect(ctx, diff)
-		if err != nil {
-			// Fallback to heuristic
-			heuristic := review.NewHeuristicDetector()
-			modes, reasoning, _ = heuristic.Detect(ctx, diff)
 		}
 		modes = filterModesByFlags(cmd, modes)
 		return modes, reasoning, nil

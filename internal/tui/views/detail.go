@@ -142,13 +142,25 @@ func (v *IssueDetailModal) renderContent() string {
 	// Fix information
 	if v.issue.Fix != nil {
 		b.WriteString("\n")
-		if lineLen > 0 {
-			result.WriteString(" ")
-			lineLen++
-		}
-		result.WriteString(word)
-		lineLen += wordLen
-	}
+		b.WriteString(shared.HeaderStyle.Render("Fix Available: "))
+		if v.issue.Fix.Available {
+			b.WriteString(shared.FixAvailableStyle.Render("Yes"))
+			if v.issue.Fix.Explanation != "" {
+				b.WriteString("\n")
+				b.WriteString(shared.HeaderStyle.Render("Explanation:"))
+				b.WriteString("\n")
+				b.WriteString(wordWrap(v.issue.Fix.Explanation, 55))
+			}
+			if v.issue.Fix.Code != "" {
+				b.WriteString("\n")
+				b.WriteString(shared.HeaderStyle.Render("Suggested Code:"))
+				b.WriteString("\n")
+				b.WriteString(v.issue.Fix.Code)
+			}
+		} else {
+			b.WriteString(shared.FixUnavailableStyle.Render("No"))
+			if v.issue.Fix.Reason != "" {
+				b.WriteString("\n")
 				b.WriteString(shared.HeaderStyle.Render("Reason: "))
 				b.WriteString(wordWrap(v.issue.Fix.Reason, 55))
 			}
