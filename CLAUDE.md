@@ -13,7 +13,7 @@ make build          # Build optimized binary to bin/revi
 make dev            # Build development version (no optimization)
 make test           # Run all tests
 make lint           # Run golangci-lint (must be installed)
-make install        # Install to /usr/local/bin
+make install        # Install to ~/.local/bin
 make clean          # Remove build artifacts
 ```
 

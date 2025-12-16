@@ -15,7 +15,7 @@ LDFLAGS = -s -w \
 	-X 'github.com/buker/revi/internal/cli.Version=$(VERSION)'
 
 # Installation paths
-PREFIX ?= /usr/local
+PREFIX ?= $(HOME)/.local
 INSTALL_DIR = $(PREFIX)/bin
 
 .PHONY: all build install uninstall clean test lint help
@@ -90,5 +90,5 @@ help:
 	@echo "  make deps-upgrade Upgrade Go dependencies"
 	@echo ""
 	@echo "Variables:"
-	@echo "  PREFIX            Installation prefix (default: /usr/local)"
+	@echo "  PREFIX            Installation prefix (default: ~/.local)"
 	@echo "  VERSION           Version string (default: git describe)"
