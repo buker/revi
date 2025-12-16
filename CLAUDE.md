@@ -71,6 +71,10 @@ go test -v ./internal/review -run TestFunctionName
 
 ## Development Guidelines
 
+### Do Not Modify go.mod Version
+
+**Never change the Go version in `go.mod` without explicit user request.** The project requires a specific Go version for compatibility and testing. If build issues occur due to Go version constraints, report the issue to the user rather than modifying the version.
+
 ### Prefer Existing Libraries Over Custom Implementations
 
 **Always research and use existing, well-tested libraries before implementing custom solutions.** This applies especially to:
