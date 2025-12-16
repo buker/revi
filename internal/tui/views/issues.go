@@ -24,6 +24,8 @@ type IssuesTableView struct {
 	issues        []IssueItem
 	cursor        int
 	commitMessage string
+	blocked       bool
+	blockReason   string
 	keys          shared.KeyMap
 }
 
@@ -55,6 +57,12 @@ func (v *IssuesTableView) SetIssues(results []*review.Result) {
 // SetCommitMessage sets the commit message to display
 func (v *IssuesTableView) SetCommitMessage(msg string) {
 	v.commitMessage = msg
+}
+
+// SetBlocked sets the blocked state and reason
+func (v *IssuesTableView) SetBlocked(blocked bool, reason string) {
+	v.blocked = blocked
+	v.blockReason = reason
 }
 
 // MarkFixed marks an issue as fixed
@@ -164,8 +172,8 @@ func (v *IssuesTableView) View() string {
 	b.WriteString(shared.RenderDivider(headerWidth + 30))
 	b.WriteString("\n")
 
-	// Commit message preview (first line only)
-	if v.commitMessage != "" {
+	// Commit message preview (first line only) - only show when not blocked
+	if v.commitMessage != "" && !v.blocked {
 		firstLine := strings.Split(v.commitMessage, "\n")[0]
 		b.WriteString("\n")
 		b.WriteString(" Commit: ")
@@ -175,8 +183,23 @@ func (v *IssuesTableView) View() string {
 		b.WriteString("\n")
 	}
 
+	// Show blocking info if blocked
+	if v.blocked {
+		b.WriteString("\n")
+		b.WriteString(shared.HighSeverityStyle.Render(" ⚠ BLOCKED: " + v.blockReason))
+		b.WriteString("\n")
+		b.WriteString(shared.HelpDescStyle.Render(" Fix high-severity issues or use --no-block to override"))
+		b.WriteString("\n")
+		b.WriteString(shared.RenderDivider(headerWidth + 30))
+		b.WriteString("\n")
+	}
+
 	// Help
-	b.WriteString(shared.HelpKeyStyle.Render(shared.IssuesTableHelp()))
+	if v.blocked {
+		b.WriteString(shared.HelpKeyStyle.Render(shared.IssuesTableHelpBlocked()))
+	} else {
+		b.WriteString(shared.HelpKeyStyle.Render(shared.IssuesTableHelp()))
+	}
 
 	return b.String()
 }

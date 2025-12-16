@@ -167,14 +167,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.results = msg.Results
 		m.issuesView.SetIssues(msg.Results)
 		if msg.Blocked {
-			m.state = StateBlocking
 			m.mu.Lock()
 			m.blocked = true
 			m.mu.Unlock()
 			m.blockReason = msg.Reason
-		} else {
-			m.state = StateIssuesTable
+			m.issuesView.SetBlocked(true, msg.Reason)
 		}
+		m.state = StateIssuesTable
 		return m, nil
 
 	case MsgCommitGenerated:
@@ -236,10 +235,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case StateCommitConfirm:
 		return m.handleCommitConfirmKeys(msg)
-
-	case StateBlocking:
-		// Just allow quit
-		return m, nil
 	}
 
 	return m, nil
@@ -264,6 +259,10 @@ func (m *Model) handleIssuesTableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Commit):
+		// Don't allow commit when blocked
+		if m.blocked {
+			return m, nil
+		}
 		// Go to commit confirm
 		m.updateCommitSummary()
 		m.state = StateCommitConfirm
@@ -414,9 +413,6 @@ func (m *Model) View() string {
 	case StateCommitConfirm:
 		return m.commitView.View()
 
-	case StateBlocking:
-		return m.renderBlocked()
-
 	case StateError:
 		return m.renderError()
 
@@ -433,15 +429,6 @@ func (m *Model) renderAnalyzing() string {
 		RenderDivider(40) + "\n\n" +
 		"Analyzing diff...\n\n" +
 		HelpKeyStyle.Render(ProgressHelp())
-}
-
-// renderBlocked renders the blocked state
-func (m *Model) renderBlocked() string {
-	return TitleStyle.Render("revi - AI Code Review") + "\n" +
-		RenderDivider(40) + "\n\n" +
-		HighSeverityStyle.Render("BLOCKED: "+m.blockReason) + "\n\n" +
-		"Use --no-block to override\n\n" +
-		HelpKeyStyle.Render(" [q] quit")
 }
 
 // renderError renders the error state

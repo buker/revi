@@ -107,6 +107,11 @@ func IssuesTableHelp() string {
 	return " [↑/k] up  [↓/j] down  [Enter] details  [c] commit  [q] quit"
 }
 
+// IssuesTableHelpBlocked returns help text for the issues table view when blocked
+func IssuesTableHelpBlocked() string {
+	return " [↑/k] up  [↓/j] down  [Enter] details  [q] quit"
+}
+
 // IssueDetailHelp returns help text for the issue detail modal
 func IssueDetailHelp(hasFix bool) string {
 	if hasFix {
