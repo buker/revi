@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+**Always use the Makefile for build, test, and lint commands.** Do not run `go build`, `go test`, or other Go commands directly - use the corresponding `make` targets instead.
+
 ```bash
 make build          # Build optimized binary to bin/revi
 make dev            # Build development version (no optimization)
