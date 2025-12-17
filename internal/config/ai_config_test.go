@@ -54,7 +54,11 @@ func TestAIConfig_ModelOverrideFromYAML(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to change directory: %v", err)
 	}
-	t.Cleanup(func() { os.Chdir(oldWd) })
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Errorf("failed to restore directory: %v", err)
+		}
+	})
 
 	Init()
 	c := Get()
@@ -99,7 +103,11 @@ func TestAIConfig_ThreeTierPriority(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to change directory: %v", err)
 	}
-	t.Cleanup(func() { os.Chdir(oldWd) })
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Errorf("failed to restore directory: %v", err)
+		}
+	})
 
 	// Set env var (middle priority)
 	t.Setenv("REVI_AI_MODEL", "model-from-env")

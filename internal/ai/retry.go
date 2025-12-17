@@ -22,13 +22,13 @@ const (
 
 // Error messages for user-friendly output
 const (
-	errMsgCLINotFound = "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
-	errMsgAuth        = "Claude CLI authentication required. Run 'claude login' to authenticate."
+	errMsgCLINotFound = "claude Code CLI not found, install with: npm install -g @anthropic-ai/claude-code"
+	errMsgAuth        = "claude CLI authentication required, run 'claude login' to authenticate"
 	errMsgRateLimit   = "rate limit exceeded after 3 retries"
 	errMsgNetwork     = "network error: %s"
 	errMsgConnection  = "connection to Claude Code CLI failed: %s"
-	errMsgProcess     = "Claude Code CLI subprocess failed: %s"
-	errMsgServer      = "Claude API error occurred. Please try again later."
+	errMsgProcess     = "claude Code CLI subprocess failed: %s"
+	errMsgServer      = "claude API error occurred, please try again later"
 	errMsgTimeout     = "request timed out"
 )
 
@@ -207,11 +207,7 @@ func isNetworkError(err error) bool {
 	}
 
 	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &opErr)
 }
 
 // extractErrorMsg extracts a user-friendly message from an error
