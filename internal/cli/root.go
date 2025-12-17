@@ -41,7 +41,7 @@ func init() {
 	cobra.OnInitialize(config.Init)
 
 	// Persistent flags available to all commands
-	rootCmd.PersistentFlags().String("model", "", "AI model to use (default: claude-sonnet-4-20250514)")
+	rootCmd.PersistentFlags().String("model", "", "AI model to use (default: claude-opus-4-5-20251101)")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	// Root command flags
