@@ -1,0 +1,32 @@
+# revi configuration file
+# Copy this file to ~/.revi.yaml (global) or ./.revi.yaml (project)
+
+# Review settings
+review:
+  # Enable/disable code review (default: true)
+  enabled: true
+
+  # Block commit if high-severity issues found (default: true)
+  block: true
+
+  # Individual review modes (all default to true)
+  modes:
+    security: true      # SQL injection, XSS, auth issues, secrets exposure
+    performance: true   # N+1 queries, unnecessary loops, caching
+    style: true         # Naming conventions, patterns, consistency
+    errors: true        # Missing error checks, swallowed exceptions
+    testing: true       # Untested paths, missing assertions
+    docs: true          # Missing comments, unclear names
+
+# Commit settings
+commit:
+  # Enable/disable commit creation (default: true)
+  enabled: true
+
+# Claude CLI settings
+claude:
+  # Path to claude CLI binary (default: "claude")
+  path: "claude"
+
+  # Timeout in seconds for each Claude call (default: 60)
+  timeout: 60
