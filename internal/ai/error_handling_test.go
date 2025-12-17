@@ -56,7 +56,7 @@ func TestExecuteWithRetry_CLINotFound(t *testing.T) {
 		t.Errorf("expected 1 call (no retry for CLI not found), got %d", callCount)
 	}
 	// Verify the error message guides users to install the CLI
-	expectedMsg := "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+	expectedMsg := "claude Code CLI not found, install with: npm install -g @anthropic-ai/claude-code"
 	if err.Error() != expectedMsg {
 		t.Errorf("error message = %q, want %q", err.Error(), expectedMsg)
 	}
