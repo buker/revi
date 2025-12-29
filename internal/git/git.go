@@ -1,19 +1,18 @@
 // Package git provides git repository operations using go-git.
-// It handles reading staged changes, generating diffs, and creating commits
-// without shelling out to the git command-line tool.
+// It handles reading staged changes and generating diffs using go-git,
+// while commit creation uses the git CLI to support commit signing (GPG/SSH).
 package git
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"os/exec"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	godiffpatch "github.com/sourcegraph/go-diff-patch"
@@ -271,77 +270,35 @@ func (r *Repository) GetStagedFiles() ([]string, error) {
 
 // Commit creates a new commit with the given message from staged changes.
 // Returns the commit hash as a hex string on success.
+// Uses the git command-line tool to support commit signing (GPG/SSH) based on user's git config.
 func (r *Repository) Commit(message string) (string, error) {
-	worktree, err := r.repo.Worktree()
+	repoRoot, err := r.Root()
 	if err != nil {
-		return "", fmt.Errorf("failed to get worktree: %w", err)
+		return "", fmt.Errorf("failed to get repository root: %w", err)
 	}
 
-	author := r.getAuthorSignature()
+	// Use git commit with message from stdin to handle multi-line messages properly
+	cmd := exec.Command("git", "commit", "-F", "-")
+	cmd.Dir = repoRoot
+	cmd.Stdin = strings.NewReader(message)
 
-	hash, err := worktree.Commit(message, &git.CommitOptions{
-		Author: author,
-	})
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to create commit: %s", strings.TrimSpace(stderr.String()))
+	}
+
+	// Get the commit hash using git rev-parse
+	hashCmd := exec.Command("git", "rev-parse", "HEAD")
+	hashCmd.Dir = repoRoot
+
+	output, err := hashCmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to create commit: %w", err)
+		return "", fmt.Errorf("failed to get commit hash: %w", err)
 	}
 
-	return hash.String(), nil
-}
-
-// getAuthorSignature returns an author signature for commits.
-// It reads from git config in order: local (.git/config), global (~/.gitconfig),
-// then falls back to environment variables (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL),
-// and finally uses defaults.
-func (r *Repository) getAuthorSignature() *object.Signature {
-	name := ""
-	email := ""
-
-	// Try to get from local git config (.git/config)
-	cfg, err := r.repo.Config()
-	if err == nil {
-		if cfg.User.Name != "" {
-			name = cfg.User.Name
-		}
-		if cfg.User.Email != "" {
-			email = cfg.User.Email
-		}
-	}
-
-	// Try to get from global git config (~/.gitconfig)
-	if name == "" || email == "" {
-		globalCfg, err := config.LoadConfig(config.GlobalScope)
-		if err == nil {
-			if name == "" && globalCfg.User.Name != "" {
-				name = globalCfg.User.Name
-			}
-			if email == "" && globalCfg.User.Email != "" {
-				email = globalCfg.User.Email
-			}
-		}
-	}
-
-	// Fall back to environment variables
-	if name == "" {
-		name = os.Getenv("GIT_AUTHOR_NAME")
-	}
-	if email == "" {
-		email = os.Getenv("GIT_AUTHOR_EMAIL")
-	}
-
-	// Fall back to defaults (only if nothing else is configured)
-	if name == "" {
-		name = "Unknown"
-	}
-	if email == "" {
-		email = "unknown@localhost"
-	}
-
-	return &object.Signature{
-		Name:  name,
-		Email: email,
-		When:  time.Now(),
-	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 // Root returns the absolute path to the repository root directory.
