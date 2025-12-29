@@ -2,6 +2,7 @@ package git
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +23,18 @@ func setupTestRepo(t *testing.T) (*Repository, string, func()) {
 	repo, err := git.PlainInit(tmpDir, false)
 	if err != nil {
 		t.Fatalf("failed to init test repo: %v", err)
+	}
+
+	// Configure git user for the test repo (required for git commit CLI)
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test Author"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cmd := exec.Command("git", cfg...)
+		cmd.Dir = tmpDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("failed to configure git %s: %v", cfg[1], err)
+		}
 	}
 
 	return &Repository{repo: repo}, tmpDir, func() {
