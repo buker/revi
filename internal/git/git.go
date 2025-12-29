@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	godiffpatch "github.com/sourcegraph/go-diff-patch"
@@ -289,19 +290,35 @@ func (r *Repository) Commit(message string) (string, error) {
 }
 
 // getAuthorSignature returns an author signature for commits.
-// It tries to read from git config first, then falls back to environment
-// variables (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL), and finally uses defaults.
+// It reads from git config in order: local (.git/config), global (~/.gitconfig),
+// then falls back to environment variables (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL),
+// and finally uses defaults.
 func (r *Repository) getAuthorSignature() *object.Signature {
 	name := ""
 	email := ""
 
-	// Try to get from git config
+	// Try to get from local git config (.git/config)
 	cfg, err := r.repo.Config()
-	if err == nil && cfg.User.Name != "" {
-		name = cfg.User.Name
+	if err == nil {
+		if cfg.User.Name != "" {
+			name = cfg.User.Name
+		}
+		if cfg.User.Email != "" {
+			email = cfg.User.Email
+		}
 	}
-	if err == nil && cfg.User.Email != "" {
-		email = cfg.User.Email
+
+	// Try to get from global git config (~/.gitconfig)
+	if name == "" || email == "" {
+		globalCfg, err := config.LoadConfig(config.GlobalScope)
+		if err == nil {
+			if name == "" && globalCfg.User.Name != "" {
+				name = globalCfg.User.Name
+			}
+			if email == "" && globalCfg.User.Email != "" {
+				email = globalCfg.User.Email
+			}
+		}
 	}
 
 	// Fall back to environment variables
@@ -312,12 +329,12 @@ func (r *Repository) getAuthorSignature() *object.Signature {
 		email = os.Getenv("GIT_AUTHOR_EMAIL")
 	}
 
-	// Fall back to defaults
+	// Fall back to defaults (only if nothing else is configured)
 	if name == "" {
-		name = "revi"
+		name = "Unknown"
 	}
 	if email == "" {
-		email = "revi@localhost"
+		email = "unknown@localhost"
 	}
 
 	return &object.Signature{
