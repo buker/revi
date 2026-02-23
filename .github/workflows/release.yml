@@ -76,7 +76,7 @@ jobs:
           git push origin "${{ steps.calc_version.outputs.new_version }}"
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: latest
